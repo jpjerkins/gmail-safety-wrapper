@@ -1,0 +1,28 @@
+# Obsidian vault metadata
+.obsidian/
+
+# Google Workspace / OAuth credentials
+credentials.json
+token.json
+*.credentials
+gws_credentials
+*_credentials.json
+client_secret*.json
+
+# Log and audit files
+*.log
+audit.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+
+# Shell temp files
+*.tmp
