@@ -46,17 +46,21 @@ This successfully listed 5 messages on first attempt after fixing the audit log 
 ```
 Failed with various JSON parsing errors. Space-less queries might work but not tested.
 
-## Current Problem
+## Current Problem — RESOLVED (2026-03-21)
 
-### Authentication Issue
-After multiple login attempts, script now says "Not authenticated with Google Workspace CLI" even though:
-- `gws auth status` works
-- `gws auth login -s gmail` completes successfully
-- Browser OAuth flow completes
+### Root Cause: PowerShell 5.1 Argument Passing Bug
 
-**Odd symptom:** When logging in, gws shows a DIFFERENT client app name (from a previous project) rather than the expected new client.
+Both the authentication check failure and the query-with-spaces failure had the **same root cause**: PowerShell 5.1 strips double quotes from strings when passing them as arguments to native commands. So `{"userId":"me"}` arrived at `gws` as `{userId:me}`, causing "key must be a string" JSON parse errors.
 
-**Hypothesis:** gws is using corrupted or stale credentials from previous project.
+The auth check (`Test-GwsAuthenticated`) ran a test `gws` command with JSON params — that command failed due to the quote-stripping, and the script misinterpreted it as an authentication failure.
+
+### Fix: Bypass PowerShell Argument Passing
+
+Added `Invoke-Gws` function that uses `System.Diagnostics.Process` to call `node.exe` directly with a properly escaped argument string, bypassing PowerShell's broken native command argument handling entirely. Internal `"` characters are escaped as `\"` for the Windows C runtime parser.
+
+### Previous (Incorrect) Hypothesis
+~~gws is using corrupted or stale credentials from previous project.~~
+Credentials were fine — the JSON parse error from the mangled params was misdiagnosed as an auth failure.
 
 ## Next Steps to Try
 
@@ -144,5 +148,5 @@ User (Phil) and Claude both tired - good time for session reset. This doc provid
 
 ---
 
-**Last updated:** 2026-03-20
-**Status:** Paused - credential reset needed
+**Last updated:** 2026-03-21
+**Status:** RESOLVED — both issues fixed by Invoke-Gws process bypass

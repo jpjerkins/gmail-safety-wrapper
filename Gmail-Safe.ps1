@@ -151,6 +151,72 @@ function Test-GwsInstalled {
     }
 }
 
+function Invoke-Gws {
+    <#
+    .SYNOPSIS
+        Calls gws via System.Diagnostics.Process to bypass PowerShell 5.1's
+        broken argument passing, which strips double quotes from JSON strings
+        before they reach the target process.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$Command,
+
+        [string]$Params,
+
+        [string]$Json
+    )
+
+    # Resolve node.exe and run-gws.js from the gws install location
+    $gwsCmd = Get-Command gws -ErrorAction Stop
+    $gwsDir = Split-Path -Parent $gwsCmd.Source
+    $nodeExe = Join-Path $gwsDir "node.exe"
+    if (-not (Test-Path $nodeExe)) {
+        $nodeExe = (Get-Command node -ErrorAction Stop).Source
+    }
+    $gwsJs = Join-Path $gwsDir "node_modules\@googleworkspace\cli\run-gws.js"
+
+    # Build argument list: command parts + optional --params/--json
+    $allArgs = @($Command)
+    if ($Params) { $allArgs += '--params'; $allArgs += $Params }
+    if ($Json)   { $allArgs += '--json';   $allArgs += $Json }
+
+    # Escape each argument for the Windows C runtime parser:
+    # arguments containing spaces or quotes must be wrapped in "..." with
+    # internal quotes escaped as \"
+    $escapedParts = @("""$gwsJs""")
+    foreach ($arg in $allArgs) {
+        if ($arg -match '[\s"]') {
+            $escaped = $arg -replace '"', '\"'
+            $escapedParts += """$escaped"""
+        } else {
+            $escapedParts += $arg
+        }
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $nodeExe
+    $psi.Arguments = $escapedParts -join ' '
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+
+    $global:LASTEXITCODE = $proc.ExitCode
+
+    if ($stdout) { Write-Output $stdout }
+    # gws writes "Using keyring backend: keyring" to stderr on every call;
+    # only surface stderr when the command actually failed
+    if ($stderr -and $proc.ExitCode -ne 0) {
+        Write-Host $stderr
+    }
+}
+
 function Test-GwsAuthenticated {
     # Try a simple command to check authentication
     $testParams = @{
@@ -158,7 +224,7 @@ function Test-GwsAuthenticated {
         maxResults = 1
     } | ConvertTo-Json -Compress
 
-    $testResult = gws gmail users messages list --params $testParams 2>&1
+    $testResult = Invoke-Gws -Command gmail, users, messages, list -Params $testParams 2>&1
 
     if ($LASTEXITCODE -ne 0) {
         Write-ColorOutput "Not authenticated with Google Workspace CLI." -Type Error
@@ -213,7 +279,7 @@ function Invoke-ListMessages {
 
     Write-AuditLog -Action "list_messages" -Details "max_results=$MaxResults, query=$Query"
 
-    gws gmail users messages list --params $paramsJson
+    Invoke-Gws -Command gmail, users, messages, list -Params $paramsJson
 }
 
 function Invoke-GetMessage {
@@ -234,7 +300,7 @@ function Invoke-GetMessage {
         id = $MessageId
     } | ConvertTo-Json -Compress
 
-    gws gmail users messages get --params $paramsJson
+    Invoke-Gws -Command gmail, users, messages, get -Params $paramsJson
 }
 
 function Invoke-MarkRead {
@@ -259,7 +325,7 @@ function Invoke-MarkRead {
         removeLabelIds = @("UNREAD")
     } | ConvertTo-Json -Compress
 
-    gws gmail users messages modify --params $paramsJson --json $bodyJson
+    Invoke-Gws -Command gmail, users, messages, modify -Params $paramsJson -Json $bodyJson
 }
 
 function Invoke-MarkUnread {
@@ -284,7 +350,7 @@ function Invoke-MarkUnread {
         addLabelIds = @("UNREAD")
     } | ConvertTo-Json -Compress
 
-    gws gmail users messages modify --params $paramsJson --json $bodyJson
+    Invoke-Gws -Command gmail, users, messages, modify -Params $paramsJson -Json $bodyJson
 }
 
 function Invoke-CreateDraft {
@@ -315,7 +381,7 @@ function Invoke-CreateDraft {
         }
     } | ConvertTo-Json -Compress
 
-    gws gmail users drafts create --params $paramsJson --json $bodyJson
+    Invoke-Gws -Command gmail, users, drafts, create -Params $paramsJson -Json $bodyJson
 
     if ($LASTEXITCODE -eq 0) {
         Write-ColorOutput "Draft created successfully" -Type Success

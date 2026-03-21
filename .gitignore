@@ -13,6 +13,9 @@ client_secret*.json
 *.log
 audit.log
 
+# Claude project files
+.claude/
+
 # OS files
 .DS_Store
 Thumbs.db
