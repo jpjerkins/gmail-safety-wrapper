@@ -345,28 +345,27 @@ Claude:
 - Reports: "Marked 15 promotional emails as read"
 ```
 
-## Next Steps
+## Testing Status
 
-1. **Test basic operations:**
-   ```powershell
-   .\Gmail-Safe.ps1 -Action List -MaxResults 5
-   ```
+### Confirmed Working (tested 2026-03-25)
+- ✅ `List` without query
+- ✅ `List` with spaced query (e.g., `"is:unread in:inbox"`) — was previously the failing case
+- ✅ `Get` by message ID
+- ✅ `MarkRead` — removes `UNREAD` label correctly
+- ✅ `MarkUnread` — restores `UNREAD` label correctly
+- ✅ Blocked operations (`Send`, `Delete`) — show correct error messages and log to audit trail
+- ✅ Audit log — all operations recorded correctly
 
-2. **Test reader agent** (dual-LLM pattern):
-   - Ask Claude Code to triage emails
-   - Verify NO email content in conversation
-   - Only structured data (category, urgency)
+### Known Minor Issue
+The `✓` checkmark characters in blocked-operation output render as garbage (`?o`) in some terminals. Cosmetic only — no functional impact.
 
-3. **Test blocked operations:**
-   ```powershell
-   .\Gmail-Safe.ps1 -Action Send
-   # Should show clear error
-   ```
+- ✅ `CreateDraft` — draft created successfully, appears in Gmail with `DRAFT` label
 
-4. **Review audit log:**
-   ```powershell
-   Get-Content "$env:USERPROFILE\.gmail-safe\audit.log" | Select-Object -Last 10
-   ```
+### Still Needs Testing
+- **Reader agent / dual-LLM pattern** — end-to-end test with Claude Code:
+  - Ask Claude Code to triage emails
+  - Verify NO email content appears in the conversation
+  - Only structured data (category, urgency) should be visible
 
 ## Related
 
