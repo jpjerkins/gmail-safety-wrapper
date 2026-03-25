@@ -61,8 +61,7 @@ audit() {
 # Cleanup function
 cleanup() {
     if [[ -n "${CREDS_FILE:-}" ]]; then
-        log_info "Cleaning up credentials..."
-        vault-cleanup "$VAULT_SECRET_NAME" 2>/dev/null || true
+        rm -f "$CREDS_FILE"
     fi
 }
 
@@ -92,8 +91,7 @@ check_dependencies() {
     local missing=()
 
     command -v gws >/dev/null 2>&1 || missing+=("gws (Google Workspace CLI)")
-    command -v vault-expose >/dev/null 2>&1 || missing+=("vault-expose (Tier 1 vault)")
-    command -v vault-cleanup >/dev/null 2>&1 || missing+=("vault-cleanup (Tier 1 vault)")
+    command -v t2-get >/dev/null 2>&1 || missing+=("t2-get (Tier 2 vault)")
     command -v jq >/dev/null 2>&1 || missing+=("jq (JSON processor)")
 
     if [[ ${#missing[@]} -gt 0 ]]; then
@@ -107,19 +105,21 @@ check_dependencies() {
 
 # Setup credentials from vault
 setup_credentials() {
-    log_info "Exposing credentials from Tier 1 vault..."
-    log_info "This may require YubiKey tap if session key expired."
+    log_info "Loading credentials from Tier 2 vault..."
 
-    CREDS_FILE=$(vault-expose "$VAULT_SECRET_NAME" --duration "$CREDENTIAL_DURATION")
+    CREDS_FILE=$(mktemp /dev/shm/gws-creds-XXXXXX)
+    chmod 600 "$CREDS_FILE"
 
-    if [[ ! -f "$CREDS_FILE" ]]; then
-        log_error "Failed to expose credentials from vault"
+    if ! t2-get "$VAULT_SECRET_NAME" > "$CREDS_FILE" 2>/dev/null; then
+        rm -f "$CREDS_FILE"
+        CREDS_FILE=""
+        log_error "Failed to get credentials from Tier 2 vault"
         exit 1
     fi
 
     export GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE="$CREDS_FILE"
-    log_info "Credentials available for $CREDENTIAL_DURATION minutes"
-    audit "credentials_exposed" "duration=${CREDENTIAL_DURATION}m"
+    log_info "Credentials loaded"
+    audit "credentials_loaded" "source=tier2"
 }
 
 # Validate that we're using minimal scopes
