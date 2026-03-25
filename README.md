@@ -35,16 +35,16 @@ BASE64_MSG=$(base64 -w0 < email.txt)
 
 ## Security Features
 
-### 1. Credential Isolation (Tier 1 Vault)
+### 1. Credential Isolation (Tier 2 Vault)
 
-Credentials stored in Tier 1 vault, protected by YubiKey TOTP:
+Credentials stored in Tier 2 vault, sealed against the Pi's hardware fingerprint:
 
 ```bash
 # gmail-safe.sh automatically:
-# - Calls vault-expose gws_credentials
+# - Calls t2-get gws_credentials (no YubiKey required at runtime)
+# - Writes to /dev/shm (memory-only tmpfs)
 # - Sets GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE
-# - Auto-cleanup after 15 minutes
-# - YubiKey tap required if session expired
+# - Cleans up on script exit
 ```
 
 **Never** manually export credentials or store outside vault.
@@ -78,10 +78,10 @@ See `reader-prompt.md` for reader agent template.
    npm install -g @googleworkspace/cli
    ```
 
-2. **Tier 1 Vault:**
-   - `vault-expose` and `vault-cleanup` commands must be available
-   - YubiKey setup for authentication
-   - See: `C:/Users/PhilJ/Nextcloud/Notes/1 Projects/Gmail Management Skill/Tier 1 Temporary Filesystem Design.md`
+2. **Tier 2 Vault:**
+   - `t2-get` command must be available (from pi-vault)
+   - Tier 2 must be provisioned and `vault-t2-fuse` service running
+   - See: `~/dev/pi-vault/pi5/vault-t2/docs/install.md`
 
 3. **Dependencies:**
    ```bash
@@ -96,16 +96,15 @@ See `reader-prompt.md` for reader agent template.
    gws auth login -s gmail
    ```
 
-2. **Export credentials to Tier 1 vault:**
+2. **Store credentials in vault:**
    ```bash
-   # Get credentials from gws CLI
+   # On laptop: export credentials (gws auth login must have been run first)
    gws auth export --unmasked > /tmp/gws-creds.json
 
-   # Store in Tier 1 vault
+   # On pi5: store in Tier 1, then copy to Tier 2
    cat /tmp/gws-creds.json | vault-set gws_credentials
-
-   # Cleanup temp file
    rm /tmp/gws-creds.json
+   vault-get gws_credentials | t2-set gws_credentials
    ```
 
 3. **Make wrapper executable:**
@@ -116,7 +115,7 @@ See `reader-prompt.md` for reader agent template.
 4. **Test:**
    ```bash
    ./gmail-safe.sh --list 5
-   # Should prompt for YubiKey tap on first use
+   # Should list your 5 most recent messages
    ```
 
 ## Usage Examples
@@ -230,7 +229,7 @@ export AUDIT_LOG=/path/to/audit.log
 | Accidental deletion | ✅ Yes | Delete operation blocked |
 | Accidental sending | ✅ Yes | Send operation blocked, draft-only |
 | Credential theft from disk | ✅ Yes | Tier 1 vault encryption + YubiKey |
-| Root access to pi5 (running) | ⚠️ Partial | Credentials in tmpfs for 15min, then auto-cleanup |
+| Root access to pi5 (running) | ⚠️ Partial | Credentials in /dev/shm only during script execution |
 | Email content leak in AI conversation | ✅ Yes | Dual-LLM pattern isolates content |
 
 ### Security Properties
