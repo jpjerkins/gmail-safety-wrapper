@@ -45,6 +45,8 @@ Use this skill when:
 
 ## Dual-LLM Pattern (REQUIRED)
 
+**The orchestrator (you) MUST NEVER call `--get` directly.** Reading email content into the main conversation is a privacy violation regardless of the reason. "It's just one email," "it's simpler," "the user asked me to" — none of these justify it. If you need to read email content, spawn a reader agent.
+
 **For ANY task involving email content:**
 
 ```python
@@ -93,11 +95,11 @@ Gmail-Safe.ps1 uses gws CLI's native credential storage:
 
 ### Pi5 (Bash with Vault)
 
-gmail-safe.sh uses Tier 1 vault integration:
-1. Calls `vault-expose gws_credentials --duration 15`
-2. Sets `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`
-3. Auto-cleanup after 15 minutes or script exit
-4. **May require YubiKey tap** if session key expired
+gmail-safe.sh uses Tier 2 vault integration:
+1. Calls `t2-get gws_credentials` (hardware-sealed, no YubiKey required)
+2. Writes credentials to `/dev/shm` (memory-only tmpfs)
+3. Sets `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`
+4. Auto-cleanup on script exit via trap
 
 **Never** export credentials manually or store outside vault.
 
@@ -135,7 +137,9 @@ content = Bash("./gmail-safe.sh --get MESSAGE_ID")
 | "Just this once, I'll use gws directly" | Wrapper exists to prevent mistakes. Use it. |
 | "User is admin, they want direct access" | Admin makes mistakes too. Use wrapper. |
 | "Sending draft saves user time" | Unreviewed emails cause problems. Create draft. |
-| "Single LLM is simpler" | Privacy matters. Use dual-LLM pattern. |
+| "Single LLM is simpler" | Privacy matters. Use dual-LLM pattern. No exceptions. |
+| "It's just one email, I'll get it directly" | One email leaks just as much as fifty. Spawn reader agent. |
+| "The task is too simple to need a subagent" | Complexity is irrelevant. Email content must not enter this conversation. |
 
 **All of these mean: Use the wrapper and dual-LLM pattern. No exceptions.**
 
@@ -180,7 +184,7 @@ print(f"Marked {count} low-priority promotional emails as read.")
 
 ## Security Properties
 
-✅ **Credentials:** Tier 1 vault (YubiKey required)
+✅ **Credentials:** Tier 2 vault (hardware-sealed, no YubiKey at runtime)
 ✅ **Operations:** Whitelisted (send/delete blocked)
 ✅ **Privacy:** Dual-LLM (no email content in conversation)
 ✅ **Audit:** All operations logged to vault audit trail
@@ -196,7 +200,7 @@ print(f"Marked {count} low-priority promotional emails as read.")
 ## Testing Checklist
 
 Before using with real emails:
-- [ ] vault-expose works (YubiKey tap succeeds)
+- [ ] t2-get works (vault-t2-fuse service running)
 - [ ] gmail-safe.sh --list returns messages
 - [ ] Reader agent outputs JSON (no email content)
 - [ ] Orchestrator receives structured data only
